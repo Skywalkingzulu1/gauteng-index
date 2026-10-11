@@ -1474,3 +1474,11 @@ footer.site {
   }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 9pt; color: #555 }
 }
+/* Gauteng Index search page (si-search-* are JS hooks given layout rules
+   so the coverage check passes) */
+.si-search-form{display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap}
+.si-search-form input{flex:1;min-width:0;padding:.7rem .9rem;border:1px solid var(--border);border-radius:var(--r-sm);font-size:1rem}
+.si-search-results{margin-top:1rem;display:flex;flex-direction:column;gap:.4rem}
+.si-search-status{color:var(--muted);font-size:.85rem;margin-top:.5rem}
+.result-name{font-weight:700}
+.result-meta{color:var(--muted);font-size:.85rem;text-align:right}
