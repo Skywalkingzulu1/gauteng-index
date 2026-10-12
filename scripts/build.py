@@ -28,13 +28,18 @@ import re
 import shutil
 import sys
 import unicodedata
+import urllib.parse
+from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DATA = os.path.join(ROOT, "data")
-SITE = os.path.join(ROOT, "site")
 
-SITE_URL = "https://skywalkingzulu1.github.io/gauteng-index"
+SITE_URL = os.environ.get(
+    "GAUTENG_SITE_URL",
+    "https://skywalkingzulu1.github.io/gauteng-index").rstrip("/")
+SITE = os.path.join(
+    ROOT, "site-local" if "GAUTENG_SITE_URL" in os.environ else "site")
 SITE_NAME = "Gauteng Index"
 SANDTON_URL = "https://skywalkingzulu1.github.io/sandton-index"
 ASSET_VERSION = "v1"
@@ -388,7 +393,27 @@ then a suburb.</p>
         body, f"{SITE_URL}/districts/"))
 
 
-def build_district(slug, short, suburbs):
+def _district_card(s, sub_urls, sub_stats):
+    name = s["name"]
+    if name in sub_urls:
+        h3 = (f'<h3><a href="{sub_urls[name]}">{e(name)} '
+              f'&rarr;</a></h3>')
+    else:
+        h3 = f"<h3>{e(name)}</h3>"
+    stats = ""
+    if name in sub_stats:
+        total, with_site = sub_stats[name]
+        stats = (f'<div class="meta">{total} businesses &middot; '
+                 f'{with_site} website listed &middot; '
+                 f'{total - with_site} not listed</div>')
+    return f"""<article class="card">
+<div class="cat">{e(s['place'])}</div>
+{h3}
+<div class="meta">{e(s['municipality'])} &middot; {s['lat']}, {s['lon']}</div>
+{stats}</article>"""
+
+
+def build_district(slug, short, suburbs, sub_urls, sub_stats):
     subs = sorted(suburbs, key=lambda s: s["name"].lower())
     child_note = ""
     if slug == "city-of-johannesburg-metropolitan-municipality":
@@ -399,18 +424,13 @@ all, including the no-website dashboard, on the child site.</p>
 <a class="btn" href="{SANDTON_URL}/dashboard/">Open the dashboard</a>
 </div>"""
     else:
-        child_note = """<div class="cta">
-<h2>Business listings stop at Sandton for now.</h2>
-<p>These suburbs are mapped ground for expansion, not indexed content.
-The child site covers Sandton in depth today.</p>
-<a class="btn" href="{SANDTON_URL}/">Open the Sandton Index</a>
+        child_note = f"""<div class="cta">
+<h2>Browse every business on this site.</h2>
+<p>Suburbs below link to their business listings where mapped.</p>
+<a class="btn" href="{SITE_URL}/categories/">Browse categories</a>
 </div>"""
     cards = "".join(
-        f"""<article class="card">
-<div class="cat">{e(s['place'])}</div>
-<h3>{e(s['name'])}</h3>
-<div class="meta">{e(s['municipality'])} &middot; {s['lat']}, {s['lon']}</div>
-</article>""" for s in subs)
+        _district_card(s, sub_urls, sub_stats) for s in subs)
     body = f"""<div class="hero"><div class="hero-grid"></div><div class="wrap">
 <div class="hero-eyebrow"><span class="dot"></span> Gauteng</div>
 <h1>{e(short)}</h1>
@@ -544,7 +564,36 @@ is only as fresh as the map.</div>
         body, f"{SITE_URL}/b/{biz['slug']}/", extra_head=extra))
 
 
-def build_cat_hub_page(cat_slug, cat_title, suburb, slug, recs):
+def build_suburb_page(suburb, slug, recs, district_short):
+    cards = "".join(
+        f"""<article class="card">
+<h3><a href="{SITE_URL}/b/{e(b['slug'])}/">{e(b['name'])}</a></h3>
+<div class="meta">{e(CAT_BY_SLUG[b['cat']][1])} &middot;
+{e('Website listed' if b['has_website_osm'] else 'No website listed')}</div>
+<div class="acts"><a href="{SITE_URL}/b/{e(b['slug'])}/">View &rarr;</a></div>
+</article>""" for b in sorted(recs, key=lambda r: r["name"].lower()))
+    with_site = sum(1 for b in recs if b["has_website_osm"])
+    body = f"""<div class="hero"><div class="hero-grid"></div><div class="wrap">
+<div class="hero-eyebrow"><span class="dot"></span> {len(recs)} businesses</div>
+<h1>{e(suburb)}</h1>
+<p>Every mapped business in {e(suburb)}, {e(district_short)} -- {with_site}
+with a website listed, {len(recs) - with_site} without.</p>
+</div></div>
+<div class="wrap" style="position:relative;z-index:3;padding-top:2rem">
+<div class="crumb"><a href="{SITE_URL}/">Home</a> &rsaquo;
+<a href="{SITE_URL}/districts/">Districts</a> &rsaquo; {e(suburb)}</div>
+<h2 class="sec">All {len(recs)} businesses</h2>
+{finder_html(f"Businesses in {suburb}", "Filter by name", "si-sub-grid")}
+<div class="grid" id="si-sub-grid">{cards}</div>
+</div>"""
+    write(os.path.join("suburbs", slug, "index.html"), page(
+        f"{suburb} businesses | {SITE_NAME}",
+        f"{len(recs)} mapped businesses in {suburb}, Gauteng.",
+        body, f"{SITE_URL}/suburbs/{slug}/"))
+
+
+def build_cat_hub_page(cat_slug, cat_title, suburb, slug, recs,
+                       suburb_url=None):
     cards = "".join(
         f"""<article class="card">
 <h3><a href="{SITE_URL}/b/{e(b['slug'])}/">{e(b['name'])}</a></h3>
@@ -562,6 +611,7 @@ def build_cat_hub_page(cat_slug, cat_title, suburb, slug, recs):
 <h2 class="sec">All {len(recs)} listings</h2>
 {finder_html(f"{cat_title} in {suburb}", "Filter by name", "si-hub-grid")}
 <div class="grid" id="si-hub-grid">{cards}</div>
+{suburb_url if suburb_url else ""}
 </div>"""
     write(os.path.join(cat_slug, slug, "index.html"), page(
         f"{cat_title} in {suburb} | {SITE_NAME}",
@@ -714,6 +764,7 @@ def verify():
 
 
 def main():
+    global SITE
     with open(os.path.join(DATA, "gauteng_suburbs.json"),
               encoding="utf-8") as fh:
         suburbs = json.load(fh)["suburbs"]
@@ -737,7 +788,24 @@ def main():
         print(f"note: {outside} mapped places fall outside the five "
               f"districts (kept in data, no site page)")
     if os.path.exists(SITE):
-        shutil.rmtree(SITE)
+        try:
+            shutil.rmtree(SITE)
+        except PermissionError:
+            # A preview server or an open browser tab is holding files.
+            # Rather than fail, build into a fresh timestamped directory;
+            # stale ones are removed best-effort on the next clean build.
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            alt = f"{SITE}-{stamp}"
+            print(f"    {SITE} locked, building into {alt} instead",
+                  flush=True)
+            SITE = alt
+    for entry in os.listdir(ROOT):
+        if entry.startswith("site-local-2"):
+            try:
+                shutil.rmtree(os.path.join(ROOT, entry))
+                print(f"    removed stale {entry}", flush=True)
+            except OSError:
+                pass
     os.makedirs(SITE, exist_ok=True)
     emit_assets()
 
@@ -771,8 +839,44 @@ def main():
                len(kept))
     build_districts_index(by_district,
                           sum(len(v) for v in by_district.values()))
+
+    # suburb pages: suburbs with >= 5 mapped businesses earn a page (the
+    # Sandton zone-page equivalent); smaller ones link to search instead.
+    MIN_SUBURB_LISTINGS = 5
+    sub_groups = {}
+    for b in kept:
+        if b.get("suburb"):
+            sub_groups.setdefault(b["suburb"], []).append(b)
+    sub_slug, sub_used = {}, set()
+    for name in sorted(sub_groups):
+        s = slugify(name)
+        i, base = 1, s
+        while s in sub_used:
+            i += 1
+            s = f"{base}-{i}"
+        sub_used.add(s)
+        sub_slug[name] = s
+    sub_urls = {}
+    n_sub = 0
+    for name, recs in sorted(sub_groups.items()):
+        if len(recs) >= MIN_SUBURB_LISTINGS:
+            dist = short_district(recs[0].get("district"))
+            build_suburb_page(name, sub_slug[name], recs, dist)
+            sub_urls[name] = (f"{SITE_URL}/suburbs/{sub_slug[name]}/")
+            n_sub += 1
+        else:
+            sub_urls[name] = (
+                f"{SITE_URL}/search/?q="
+                f"{urllib.parse.quote_plus(name)}")
+    sub_stats = {}
+    for name, recs in sub_groups.items():
+        w = sum(1 for b in recs if b["has_website_osm"])
+        sub_stats[name] = (len(recs), w)
     for slug, short in DISTRICTS:
-        build_district(slug, short, by_district[slug])
+        build_district(slug, short, by_district[slug], sub_urls,
+                       sub_stats)
+    print(f"suburb pages : {n_sub} (of {len(sub_groups)} suburbs with "
+          f"businesses)")
 
     # categories, hubs (thin combos folded), business pages
     cats_present = []
@@ -792,21 +896,28 @@ def main():
         for b in recs:
             subs.setdefault(b.get("suburb") or "", []).append(b)
         shown = [(name if name else "Gauteng-wide",
-                  slugify(name) if name else "gauteng", recs2)
+                  sub_slug.get(name, "gauteng"), recs2)
                  for name, recs2 in subs.items()
                  if len(recs2) >= MIN_HUB_LISTINGS]
         build_cat_page(slug, title,
                        [(name, sslug, len(recs2))
                         for name, sslug, recs2 in sorted(shown)])
         for _name, sslug, recs2 in shown:
+            sub_link = ""
+            if _name != "Gauteng-wide" and _name in sub_urls:
+                sub_link = (f"""<div class="cta" style="margin-top:2rem">
+<h2>All of {e(_name)}</h2>
+<p>Every mapped business in this suburb, all categories.</p>
+<a class="btn" href="{sub_urls[_name]}">Open {e(_name)}</a>
+</div>""")
             build_cat_hub_page(slug, title,
-                               _name, sslug, recs2)
+                               _name, sslug, recs2, sub_link)
             built_hubs.add((slug, sslug))
             n_hub += 1
     n_biz = 0
     for b in kept:
         sub = b.get("suburb") or ""
-        hub_exists = (b["cat"], slugify(sub) if sub else "gauteng") \
+        hub_exists = (b["cat"], sub_slug.get(sub, "gauteng")) \
             in built_hubs
         build_business_page(b, b["cat"], CAT_BY_SLUG[b["cat"]][1],
                             hub_exists)

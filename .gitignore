@@ -1,3 +1,4 @@
 site/
+site-local/
 __pycache__/
 *.pyc
