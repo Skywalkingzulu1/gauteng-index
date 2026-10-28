@@ -231,6 +231,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <meta property="og:description" content="{e(description)}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="{e(canonical)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{e(title)}">
+<meta name="twitter:description" content="{e(description)}">
 <meta name="theme-color" content="#0052cc">
 <meta name="geo.region" content="ZA-GT">
 <meta name="geo.placename" content="Gauteng, South Africa">
@@ -966,6 +969,19 @@ def main():
             if f == "index.html":
                 rel = os.path.relpath(os.path.join(root, f), SITE)
                 written.append(rel.replace("\\", "/"))
+    for slug, title, desc, body in [
+        ("about", "About Gauteng Index", "About the Gauteng Index directory.",
+         "<h1>About Gauteng Index</h1><p>A directory of businesses across Gauteng, South Africa.</p>"),
+        ("contact", "Contact", "Contact Gauteng Index.",
+         "<h1>Contact</h1><p>Email: <a href='mailto:andilexmchunu@gmail.com'>andilexmchunu@gmail.com</a></p><p>Twitter: <a href='https://twitter.com/Darthvader_sa'>@Darthvader_sa</a></p>"),
+        ("terms", "Terms of Service", "Terms of service for Gauteng Index.",
+         "<h1>Terms of Service</h1><p>By using this site you agree to these terms.</p>"),
+        ("privacy", "Privacy Policy", "Privacy policy for Gauteng Index.",
+         "<h1>Privacy Policy</h1><p>We respect your privacy.</p>"),
+    ]:
+        out = os.path.join(SITE, slug)
+        os.makedirs(out, exist_ok=True)
+        write(os.path.join(out, "index.html"), page(title, desc, body, f"{SITE_URL}/{slug}/"))
     build_sitemap(sorted(f"{SITE_URL}/{w[:-len('/index.html')]}/"
                          if w != "index.html" else f"{SITE_URL}/"
                          for w in written))
